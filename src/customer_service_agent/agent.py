@@ -4,7 +4,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langchain_anthropic import ChatAnthropic
 from langgraph.prebuilt import create_react_agent
 
 from customer_service_agent.config import settings
@@ -26,29 +26,36 @@ SYSTEM_PROMPT = """你是一个专业的电商售后客服助手，名叫"售后
 def create_llm(
     model_name: str | None = None,
     temperature: float | None = None,
-) -> ChatOpenAI:
+) -> ChatOpenAI | ChatAnthropic:
     """Create the LLM based on configured provider.
 
-    Supports OpenAI and MiniMax via OpenAI-compatible API.
+    Supports OpenAI and MiniMax-CN via their respective API formats.
 
     Args:
         model_name: Override model name. Defaults to provider's default model.
         temperature: Override temperature. Defaults to config value.
 
     Returns:
-        Configured ChatOpenAI instance.
+        Configured LLM instance.
     """
     provider = settings.llm_provider.lower()
     temp = temperature if temperature is not None else settings.temperature
 
-    if provider == "minimax":
-        api_key = settings.minimax_api_key
-        base_url = settings.minimax_base_url
-        model = model_name or settings.minimax_model
+    if provider == "minimax-cn":
+        api_key = settings.minimax_cn_api_key
+        base_url = settings.minimax_cn_base_url
+        model = model_name or settings.minimax_cn_model
         if not api_key:
             raise ValueError(
-                "MiniMax API key not set. Please set MINIMAX_API_KEY in .env"
+                "MiniMax-CN API key not set. Please set MINIMAX_CN_API_KEY in .env "
+                "or ~/.hermes/.env"
             )
+        return ChatAnthropic(
+            model=model,
+            temperature=temp,
+            api_key=api_key,
+            base_url=base_url,
+        )
     else:
         api_key = settings.openai_api_key
         base_url = settings.openai_base_url
@@ -57,22 +64,21 @@ def create_llm(
             raise ValueError(
                 "OpenAI API key not set. Please set OPENAI_API_KEY in .env"
             )
+        return ChatOpenAI(
+            model=model,
+            temperature=temp,
+            api_key=api_key,
+            base_url=base_url,
+        )
 
-    return ChatOpenAI(
-        model=model,
-        temperature=temp,
-        api_key=api_key,
-        base_url=base_url,
-    )
 
-
-async def chat(
+def chat(
     session_id: str,
     message: str,
     model_name: str | None = None,
     temperature: float | None = None,
 ) -> dict[str, Any]:
-    """Process a single chat message through the agent.
+    """Process a single chat message through the agent (sync).
 
     Args:
         session_id: Unique session identifier.
@@ -84,49 +90,27 @@ async def chat(
         Agent execution result dictionary with 'output' key.
     """
     llm = create_llm(model_name=model_name, temperature=temperature)
-    checkpointer = await get_checkpointer()
+    checkpointer = get_checkpointer()
 
     graph = create_react_agent(
         model=llm,
         tools=ALL_TOOLS,
-        state_modifier=SYSTEM_PROMPT,
+        prompt=SYSTEM_PROMPT,
         checkpointer=checkpointer,
     )
 
     config = {"configurable": {"thread_id": session_id}}
-    result = await graph.ainvoke(
+    result = graph.invoke(
         {"messages": [HumanMessage(content=message)]},
         config=config,
     )
 
     last_message = result["messages"][-1]
-    return {"output": last_message.content}
-
-
-def chat_sync(
-    session_id: str,
-    message: str,
-    model_name: str | None = None,
-    temperature: float | None = None,
-) -> dict[str, Any]:
-    """Synchronous wrapper for chat().
-
-    Args:
-        session_id: Unique session identifier.
-        message: User message text.
-        model_name: Override model name.
-        temperature: Override temperature.
-
-    Returns:
-        Agent execution result dictionary with 'output' key.
-    """
-    import asyncio
-
-    return asyncio.run(
-        chat(
-            session_id=session_id,
-            message=message,
-            model_name=model_name,
-            temperature=temperature,
-        )
-    )
+    content = last_message.content
+    # MiniMax-M2.7 returns content as a list of dicts with 'thinking' and 'text'
+    if isinstance(content, list):
+        text_parts = [item["text"] for item in content if isinstance(item, dict) and item.get("type") == "text"]
+        output = "\n".join(text_parts) if text_parts else str(content)
+    else:
+        output = content
+    return {"output": output}

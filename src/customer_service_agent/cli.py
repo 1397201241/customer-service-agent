@@ -6,7 +6,7 @@ import uuid
 
 from dotenv import load_dotenv
 
-from customer_service_agent.agent import chat_sync
+from customer_service_agent.agent import chat
 from customer_service_agent.config import settings
 
 
@@ -45,8 +45,8 @@ def parse_args() -> argparse.Namespace:
         "--provider",
         type=str,
         default=None,
-        choices=["openai", "minimax"],
-        help="LLM 提供商（openai 或 minimax）",
+        choices=["openai", "minimax-cn"],
+        help="LLM 提供商（openai 或 minimax-cn）",
     )
     return parser.parse_args()
 
@@ -83,7 +83,7 @@ def run_cli(session_id: str, phone: str | None, model: str) -> None:
             break
 
         try:
-            result = chat_sync(
+            result = chat(
                 session_id=session_id,
                 message=user_input,
                 model_name=model,
@@ -100,6 +100,7 @@ def main() -> int:
     Returns:
         Exit code (0 for success, 1 for error).
     """
+    load_dotenv("/home/administrator/.hermes/.env")
     load_dotenv()
 
     args = parse_args()
@@ -109,10 +110,10 @@ def main() -> int:
         settings.llm_provider = args.provider
 
     # Validate API key for selected provider
-    if settings.llm_provider == "minimax":
-        if not settings.minimax_api_key:
+    if settings.llm_provider == "minimax-cn":
+        if not settings.minimax_cn_api_key:
             print(
-                "错误: 未设置 MINIMAX_API_KEY 环境变量。\n"
+                "错误: 未设置 MINIMAX_CN_API_KEY 环境变量。\n"
                 "请先设置环境变量或创建 .env 文件。",
                 file=sys.stderr,
             )

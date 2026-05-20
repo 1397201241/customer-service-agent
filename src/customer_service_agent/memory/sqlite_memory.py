@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.checkpoint.memory import InMemorySaver
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
@@ -11,14 +11,19 @@ DATA_DIR.mkdir(exist_ok=True)
 DEFAULT_DB_PATH = DATA_DIR / "chat_history.db"
 
 
-async def get_checkpointer(db_path: str | None = None) -> AsyncSqliteSaver:
-    """Get an AsyncSqliteSaver checkpointer for conversation persistence.
+# Module-level singleton checkpointer
+_checkpointer: InMemorySaver | None = None
 
-    Args:
-        db_path: Path to the SQLite database file. Defaults to data/chat_history.db.
+
+def get_checkpointer() -> InMemorySaver:
+    """Get an InMemorySaver checkpointer for conversation persistence.
+
+    Uses a module-level singleton.
 
     Returns:
-        AsyncSqliteSaver instance.
+        InMemorySaver instance.
     """
-    path = db_path or str(DEFAULT_DB_PATH)
-    return AsyncSqliteSaver.from_conn_string(path)
+    global _checkpointer
+    if _checkpointer is None:
+        _checkpointer = InMemorySaver()
+    return _checkpointer
