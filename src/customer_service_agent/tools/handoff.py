@@ -1,13 +1,29 @@
 """Human handoff tool for escalating to human agents."""
 
-from datetime import datetime
-
 from langchain.tools import tool
 
 from customer_service_agent.models.schemas import HumanHandoffRequest
 
 
 _HANDOFF_TICKETS: list[HumanHandoffRequest] = []
+
+_URGENT_KEYWORDS: tuple[str, ...] = (
+    "投诉",
+    "urgent",
+    "严重",
+    "欺诈",
+    "诈骗",
+    "人身安全",
+)
+_HIGH_KEYWORDS: tuple[str, ...] = (
+    "质量问题",
+    "损坏",
+    "破损",
+    "漏发",
+    "错发",
+    "退货",
+    "退款",
+)
 
 
 @tool
@@ -62,16 +78,11 @@ def _determine_priority(reason: str) -> str:
         reason: Handoff reason text.
 
     Returns:
-        Priority level string.
+        One of "urgent", "high", or "normal".
     """
-    urgent_keywords = ["投诉", " urgent", "严重", "欺诈", "诈骗", "人身安全"]
-    high_keywords = ["质量问题", "损坏", "破损", "漏发", "错发", "退货", "退款"]
-
-    lower = reason.lower()
-    for kw in urgent_keywords:
-        if kw in lower or kw in reason:
-            return "urgent"
-    for kw in high_keywords:
-        if kw in lower or kw in reason:
-            return "high"
+    text = reason.lower()
+    if any(kw in text for kw in _URGENT_KEYWORDS):
+        return "urgent"
+    if any(kw in text for kw in _HIGH_KEYWORDS):
+        return "high"
     return "normal"

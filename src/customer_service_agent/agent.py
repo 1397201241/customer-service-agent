@@ -8,7 +8,7 @@ from langchain_anthropic import ChatAnthropic
 from langgraph.prebuilt import create_react_agent
 
 from customer_service_agent.config import settings
-from customer_service_agent.memory.sqlite_memory import get_checkpointer
+from customer_service_agent.memory.checkpointer import get_checkpointer
 from customer_service_agent.tools import ALL_TOOLS
 
 
@@ -72,6 +72,32 @@ def create_llm(
         )
 
 
+def _extract_text_content(content: Any) -> str:
+    """Normalize LangChain message content to a plain string.
+
+    Chat models may return either a string, or a list of content blocks
+    (the Anthropic SDK shape, also used by MiniMax's Anthropic-compatible
+    endpoint). For block lists, concatenate every block whose ``type`` is
+    ``"text"``; if none are present, fall back to ``str(content)``.
+
+    Args:
+        content: The ``content`` attribute of an AIMessage.
+
+    Returns:
+        Plain text string suitable for returning to the caller.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts = [
+            item["text"]
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text"
+        ]
+        return "\n".join(text_parts) if text_parts else str(content)
+    return str(content)
+
+
 def chat(
     session_id: str,
     message: str,
@@ -105,12 +131,4 @@ def chat(
         config=config,
     )
 
-    last_message = result["messages"][-1]
-    content = last_message.content
-    # MiniMax-M2.7 returns content as a list of dicts with 'thinking' and 'text'
-    if isinstance(content, list):
-        text_parts = [item["text"] for item in content if isinstance(item, dict) and item.get("type") == "text"]
-        output = "\n".join(text_parts) if text_parts else str(content)
-    else:
-        output = content
-    return {"output": output}
+    return {"output": _extract_text_content(result["messages"][-1].content)}

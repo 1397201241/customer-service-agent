@@ -1,7 +1,5 @@
 """Return process guidance tool."""
 
-from datetime import datetime
-
 from langchain.tools import tool
 
 from customer_service_agent.models.schemas import ReturnGuideResult
