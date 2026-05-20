@@ -1,13 +1,13 @@
 """Command-line interface for the customer service agent."""
 
 import argparse
-import os
 import sys
 import uuid
 
 from dotenv import load_dotenv
 
 from customer_service_agent.agent import chat_sync
+from customer_service_agent.config import settings
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,8 +38,15 @@ def parse_args() -> argparse.Namespace:
         "--model",
         "-m",
         type=str,
-        default="gpt-4o-mini",
-        help="OpenAI模型名称（默认: gpt-4o-mini）",
+        default=None,
+        help="模型名称（默认使用配置中的模型）",
+    )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        default=None,
+        choices=["openai", "minimax"],
+        help="LLM 提供商（openai 或 minimax）",
     )
     return parser.parse_args()
 
@@ -95,15 +102,30 @@ def main() -> int:
     """
     load_dotenv()
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        print(
-            "错误: 未设置 OPENAI_API_KEY 环境变量。\n"
-            "请先设置环境变量或创建 .env 文件。",
-            file=sys.stderr,
-        )
-        return 1
-
     args = parse_args()
+
+    # Override provider if specified via CLI
+    if args.provider:
+        settings.llm_provider = args.provider
+
+    # Validate API key for selected provider
+    if settings.llm_provider == "minimax":
+        if not settings.minimax_api_key:
+            print(
+                "错误: 未设置 MINIMAX_API_KEY 环境变量。\n"
+                "请先设置环境变量或创建 .env 文件。",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        if not settings.openai_api_key:
+            print(
+                "错误: 未设置 OPENAI_API_KEY 环境变量。\n"
+                "请先设置环境变量或创建 .env 文件。",
+                file=sys.stderr,
+            )
+            return 1
+
     session_id = args.session_id or str(uuid.uuid4())
     run_cli(session_id, args.phone, args.model)
     return 0

@@ -1,6 +1,5 @@
 """ReAct Agent core for the customer service agent using LangGraph."""
 
-import os
 from typing import Any
 
 from langchain_core.messages import HumanMessage
@@ -8,6 +7,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.prebuilt import create_react_agent
 
+from customer_service_agent.config import settings
 from customer_service_agent.memory.sqlite_memory import get_checkpointer
 from customer_service_agent.tools import ALL_TOOLS
 
@@ -23,48 +23,67 @@ SYSTEM_PROMPT = """你是一个专业的电商售后客服助手，名叫"售后
 - 如果用户没有提供订单号或手机号，请礼貌地询问"""
 
 
-def create_agent(
-    model_name: str = "gpt-4o-mini",
-    temperature: float = 0.3,
+def create_llm(
+    model_name: str | None = None,
+    temperature: float | None = None,
 ) -> ChatOpenAI:
-    """Create the LLM for the agent.
+    """Create the LLM based on configured provider.
+
+    Supports OpenAI and MiniMax via OpenAI-compatible API.
 
     Args:
-        model_name: OpenAI model name to use.
-        temperature: Sampling temperature for the LLM.
+        model_name: Override model name. Defaults to provider's default model.
+        temperature: Override temperature. Defaults to config value.
 
     Returns:
         Configured ChatOpenAI instance.
     """
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is not set")
+    provider = settings.llm_provider.lower()
+    temp = temperature if temperature is not None else settings.temperature
+
+    if provider == "minimax":
+        api_key = settings.minimax_api_key
+        base_url = settings.minimax_base_url
+        model = model_name or settings.minimax_model
+        if not api_key:
+            raise ValueError(
+                "MiniMax API key not set. Please set MINIMAX_API_KEY in .env"
+            )
+    else:
+        api_key = settings.openai_api_key
+        base_url = settings.openai_base_url
+        model = model_name or settings.openai_model
+        if not api_key:
+            raise ValueError(
+                "OpenAI API key not set. Please set OPENAI_API_KEY in .env"
+            )
 
     return ChatOpenAI(
-        model=model_name,
-        temperature=temperature,
+        model=model,
+        temperature=temp,
         api_key=api_key,
+        base_url=base_url,
     )
 
 
 async def chat(
     session_id: str,
     message: str,
-    model_name: str = "gpt-4o-mini",
-    temperature: float = 0.3,
+    model_name: str | None = None,
+    temperature: float | None = None,
 ) -> dict[str, Any]:
     """Process a single chat message through the agent.
 
     Args:
         session_id: Unique session identifier.
         message: User message text.
-        model_name: OpenAI model name to use.
-        temperature: Sampling temperature for the LLM.
+        model_name: Override model name.
+        temperature: Override temperature.
 
     Returns:
         Agent execution result dictionary with 'output' key.
     """
-    llm = create_agent(model_name=model_name, temperature=temperature)
+    llm = create_llm(model_name=model_name, temperature=temperature)
     checkpointer = await get_checkpointer()
 
     graph = create_react_agent(
@@ -87,24 +106,27 @@ async def chat(
 def chat_sync(
     session_id: str,
     message: str,
-    model_name: str = "gpt-4o-mini",
-    temperature: float = 0.3,
+    model_name: str | None = None,
+    temperature: float | None = None,
 ) -> dict[str, Any]:
     """Synchronous wrapper for chat().
 
     Args:
         session_id: Unique session identifier.
         message: User message text.
-        model_name: OpenAI model name to use.
-        temperature: Sampling temperature for the LLM.
+        model_name: Override model name.
+        temperature: Override temperature.
 
     Returns:
         Agent execution result dictionary with 'output' key.
     """
     import asyncio
-    return asyncio.run(chat(
-        session_id=session_id,
-        message=message,
-        model_name=model_name,
-        temperature=temperature,
-    ))
+
+    return asyncio.run(
+        chat(
+            session_id=session_id,
+            message=message,
+            model_name=model_name,
+            temperature=temperature,
+        )
+    )

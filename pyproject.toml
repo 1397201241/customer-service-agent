@@ -10,6 +10,7 @@ dependencies = [
     "langchain-community>=0.4.1",
     "langchain-openai>=1.2.1",
     "langgraph-checkpoint-sqlite>=2.0.0",
+    "openai>=2.37.0",
     "pydantic-settings>=2.14.1",
     "python-dotenv>=1.0.0",
     "sqlalchemy>=2.0.49",
